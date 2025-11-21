@@ -19,12 +19,12 @@ import { businessRouter } from './manageBusiness.js';
 dotenv.config('../')
 
 // set up the keys for authentication
-const accessPrivateKey = fs.readFileSync('jwtRSA256-private.pem','utf-8');
-const publicKey = fs.readFileSync('jwtRSA256-public.pem','utf-8');
+const accessPrivateKey = process.env.jwt-private;
+const publicKey = process.env.jwt-private;
 
 // set up keys for refresh
-const refreshPrivateKey = fs.readFileSync('refresh-private.pem');
-const refreshPublicKey = fs.readFileSync('refresh-public.pem');
+const refreshPrivateKey = process.env.refresh-private;
+const refreshPublicKey = process.env.refresh-public;
 
 const accessCookieOptions = {
   httpOnly: false,  // Prevent access via JavaScript
