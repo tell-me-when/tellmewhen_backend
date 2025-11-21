@@ -1,5 +1,5 @@
 // Get all open jobs for certain user id ( send empty paeameter for manager)
-import { executeQuery, closePool } from 'db_config.js';
+import { executeQuery, closePool } from './db_config.js';
 
 
 const {
@@ -321,7 +321,6 @@ const testFunctions = async () => {
 
     await completeJob(2,'13381d5135ea9bb2c91dfaf3cfcdc781')
 
-    closeDB();
   } catch (err) {
     console.error('Error during testing:', err.message);
   }

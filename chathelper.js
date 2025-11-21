@@ -1,7 +1,7 @@
 import express from 'express';
 import { StreamChat } from "stream-chat";
 import dotenv from "dotenv";
-import { executeQuery } from './db.js';
+import { executeQuery } from './db_config.js';
 
 // loads env
 dotenv.config("./");

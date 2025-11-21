@@ -9,7 +9,7 @@
 // need to add func to return buisness name and pfp DONE
 import mysql from 'mysql';
 import dotenv from 'dotenv';
-import { executeQuery, closePool } from 'db_config.js';
+import { executeQuery, closePool } from './db_config.js';
 
 import { access } from 'fs';
 dotenv.config();

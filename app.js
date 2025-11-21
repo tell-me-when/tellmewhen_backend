@@ -54,6 +54,6 @@ app.use(function(err, req, res, next) {
 });
 
 app.listen(process.env.PORT, ()=>{
-  console.log(`Server listening on http://localhost:${process.env.PORT}`)
+  console.log(`Server listening on port ${process.env.PORT}`)
 })
 // export { app };

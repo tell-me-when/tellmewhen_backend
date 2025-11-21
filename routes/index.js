@@ -9,7 +9,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 import dotenv from 'dotenv';
-import { getJobHistory, getOpenJobs, getNotifications, closeDB, freezeUser, addToken, blockToken, addSubscription } from '../dbhelper.js';
+import { getJobHistory, getOpenJobs, getNotifications, freezeUser, addToken, blockToken, addSubscription } from '../dbhelper.js';
 import { countOpenJobs, getBusinessPhoto, addUser, login,registerBusinessAndAdmin, getBusinessId, searchEmployees} from '../managementdbfunc.js';
 import {authMiddleWare, adminMiddleWare, moderatorMiddleWare} from '../authMiddleWare.js';
 import { blackListToken, checkToken } from '../blacklist.js';
@@ -19,12 +19,12 @@ import { businessRouter } from './manageBusiness.js';
 dotenv.config('../')
 
 // set up the keys for authentication
-const accessPrivateKey = process.env.jwt-private;
-const publicKey = process.env.jwt-private;
+const accessPrivateKey = process.env.jwt_priv;
+const publicKey = process.env.jwt_priv;
 
 // set up keys for refresh
-const refreshPrivateKey = process.env.refresh-private;
-const refreshPublicKey = process.env.refresh-public;
+const refreshPrivateKey = process.env.refresh_priv;
+const refreshPublicKey = process.env.refresh_pub;
 
 const accessCookieOptions = {
   httpOnly: false,  // Prevent access via JavaScript

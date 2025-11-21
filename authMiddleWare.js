@@ -8,7 +8,7 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const publicKey = process.env.jwt-public; //fs.readFileSync('jwtRSA256-public.pem','utf-8');
+const publicKey = process.env.jwt_pub; //fs.readFileSync('jwtRSA256_public.pem','utf-8');
 
 const authMiddleWare = async(req, res, next) => {
     //check that authorisation token is present in cookies

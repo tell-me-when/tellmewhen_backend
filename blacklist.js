@@ -6,7 +6,7 @@ Methods:
  */
 
 //imports
-import { addToken, getTokenStatus, blockToken, closeDB} from "./dbhelper.js";
+import { addToken, getTokenStatus, blockToken} from "./dbhelper.js";
 
 //Check if a token has been blacklisted
 export const checkToken = async(token) =>{

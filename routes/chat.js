@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import { chatRouter, generateBusinessToken, generateGuestToken, createJobChannel, QuerybyName ,QuerybyUser,streamChat,deleteChannel} from '../chathelper.js';
-import { executeQuery } from '../db.js';
+import { executeQuery } from '../db_config.js';
 // loads env
 dotenv.config("./");
 
