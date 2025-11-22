@@ -33,9 +33,8 @@ app.use('/', indexRouter);
 app.use('/delete', deletionRouter)
 
 app.use('/jobs', jobRouter)
-app.use("/business", businessRouter);
+app.use('/business', businessRouter);
 
-app.use('/jobs',jobRouter)
 app.use('/customer',customerRouter)
 app.use ('/chat', chatRouter)
 

@@ -200,7 +200,7 @@ jobRouter.get('/current/:uid',authMiddleWare, async (req, res) => {
 
         result = await getOpenJobs(businessId,userId); // returns a JSON object
 
-        return res.status(200).json(JSON.parse(result));
+        return res.status(200).json(result);
 
     }catch(err){
       
@@ -419,7 +419,7 @@ jobRouter.post('/notify/:jid',authMiddleWare, async (req, res) => {
     let pushSubscription;
     try{
 
-       pushSubscription = JSON.parse(await getSubscription(jobId,businessId))[0]
+       pushSubscription = (await getSubscription(jobId,businessId))[0]
        if( pushSubscription === undefined){
 
             return res.status(400).json({error:'Customer has not enabled notifications'})
