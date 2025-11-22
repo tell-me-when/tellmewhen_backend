@@ -21,7 +21,13 @@ const __dirname = "";
 
 app.use(logger('dev'));
 
-app.use(cors({credentials:true, origin:["https://tellmewhen.co.uk", "https://www.tellmewhen.co.uk"]}))
+if(process.env.mode == "DEVELOPMENT"){
+  console.log("----- STARTING IN DEVELOPMENT MODE -----")
+  app.use(cors({credentials:true, origin:'http://localhost:3000'}))
+}
+else{
+  app.use(cors({credentials:true, origin:["https://tellmewhen.co.uk", "https://www.tellmewhen.co.uk"]}))
+}
 
 
 app.use(express.urlencoded({ extended: false }));
