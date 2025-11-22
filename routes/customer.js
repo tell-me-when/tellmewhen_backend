@@ -15,12 +15,12 @@ customerRouter.get('/my_job/:job_id', async (req, res) => {
     const jobId = req.params.job_id
 
     try{
-        const decyptedId = decryptJobId(jobId)
+        const decyptedId = await decryptJobId(jobId)
 
         let results = await getCustomerJobDetails(decyptedId)
 
 
-        results["jobId"] = decyptedId;
+        results[0]["jobId"] = decyptedId;
         console.log(results)
         
         return res.status(200).json(results)
