@@ -64,7 +64,7 @@ jobRouter.get('/history',authMiddleWare, async (req, res) => {
 
     }catch(err){
 
-      return res.status(500).json({ error:err});
+      return res.status(500).json({ error: `Failed to retrieve job history: ${err}` });
 
     }
 });
@@ -106,7 +106,7 @@ jobRouter.get('/open_jobs/:bid', authMiddleWare, async(req,res) => {
 
     } catch (err) {
 
-        res.status(500).json( { error:err });
+        return res.status(500).json({ error: `Failed to count open jobs: ${err}` });
 
     }
 })
@@ -152,7 +152,7 @@ jobRouter.get('/total_jobs/:bid', authMiddleWare, async(req,res) => {
 
     }catch (err) {
 
-      return res.status(500).json( {error:err});
+      return res.status(500).json({ error: `Failed to count total jobs: ${err}` });
 
     }
 });
@@ -204,7 +204,8 @@ jobRouter.get('/current/:uid',authMiddleWare, async (req, res) => {
 
     }catch(err){
       
-      return res.status(500).json({ error:err });
+      return res.status(500).json({ error: `Failed to retrieve current jobs: ${err}` });
+
 
     }
 });
@@ -254,7 +255,7 @@ jobRouter.post('/assign_job',authMiddleWare, moderatorMiddleWare, async (req,res
 
     }catch (err) {
 
-        return res.status(500).json({error: err});
+        return res.status(500).json({ error: `Failed to assign job: ${err}` });
 
     }
     
@@ -330,8 +331,8 @@ jobRouter.post('/new', authMiddleWare, async (req,res) => {
 
     } catch (err) {
 
-        return res.status(500).json({error : err})
-}
+      return res.status(500).json({ error: `Failed to create new job: ${err}` });
+    }
 })
 
 /**
@@ -382,7 +383,7 @@ jobRouter.post('/complete/:jid',authMiddleWare, async (req,res) =>{
 
     }catch (err) {
         console.log(err)
-        return res.status(500).json( { error : err } )
+        return res.status(500).json({ error: `Failed to complete job: ${err}` });
 
     }
 
@@ -426,7 +427,7 @@ jobRouter.post('/notify/:jid',authMiddleWare, async (req, res) => {
        }
 
     } catch (err) {
-      return res.status(500).json({ error: err });
+      return res.status(500).json({ error: `Failed to retrieve subscription: ${err}` });
       
     }
   
@@ -457,7 +458,7 @@ jobRouter.post('/notify/:jid',authMiddleWare, async (req, res) => {
       return res.status(200).json({ message:'Notification sent'})
 
     }catch(err){
-      return res.status(500).json({ error:err })
+      return res.status(500).json({ error: `Failed to send notification: ${err}` });
     }
    
 })
