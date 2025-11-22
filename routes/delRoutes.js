@@ -37,7 +37,7 @@ deletionRouter.post('/user/:uid',authMiddleWare, adminMiddleWare, async(req,res)
 
    }catch(err){
 
-        return res.status(409).json({error:err});
+        return res.status(409).json({ error: `Failed to delete user: ${err}` });
 
    }
 
@@ -81,7 +81,7 @@ deletionRouter.post("/:bid",authMiddleWare,adminMiddleWare, async(req,res) =>{
         return res.sendStatus(204)
     }catch(err){
 
-        return res.status(500).json({ error:err });
+        return res.status(500).json({ error: `Failed to delete business: ${err}` });
 
     }
 

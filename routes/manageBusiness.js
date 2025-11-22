@@ -36,7 +36,7 @@ businessRouter.get('/info', authMiddleWare, async (req,res) =>{
     try{
         data = await getBusinessDetails(businessId);
     } catch (err) {
-        res.status(500).json( {error:err});
+        return res.status(500).json({ error: `Failed to retrieve business details: ${err}` });
     }
 
     if(!(data === null)){
@@ -77,7 +77,7 @@ businessRouter.post('/change_password', authMiddleWare, adminMiddleWare, async (
     try{
         await editUserLogin(userId,username,hashedPwd);
     } catch (err) {
-        res.json( { error: err });
+        return res.status(500).json({ error: `Failed to change password: ${err}` });
     }
 
     res.status(200).json( { message : 'Password changed'});
@@ -111,7 +111,7 @@ businessRouter.post('/change_name', authMiddleWare,adminMiddleWare, async (req,r
     try{
         await renameBusiness(businessId,newName);
     }catch (err) {
-        res.status(500).json( { error: err } );
+        return res.status(500).json({ error: `Failed to rename business: ${err}` });
     }
 
     res.status(201).json( {message: `Business renamed to ${newName}`})
@@ -145,7 +145,7 @@ businessRouter.post('/change_photo', authMiddleWare,adminMiddleWare, async (req,
     try{
         await changeBusinessPhoto(req.user.businessId, newPhoto);
     } catch (err) {
-        res.status(500).json( { error: err } );
+        return res.status(500).json({ error: `Failed to change business photo: ${err}` });
     }
 
     return res.status(200).json({ message:'Photo succesfully changed'});
@@ -187,7 +187,7 @@ businessRouter.get('/search_employees', authMiddleWare, async (req,res) =>{
 
     }catch(err){
 
-        return res.status(500).json({error:err });
+        return res.status(500).json({ error: `Failed to search employees: ${err}` });
 
     }
 
@@ -230,7 +230,7 @@ businessRouter.get('/total_jobs/', authMiddleWare, async (req,res) => {
 
     }catch(err){
 
-        return res.status(500).json({ error:err })
+        return res.status(500).json({ error: `Failed to count open jobs: ${err}` });
     }
 
     return res.status(200).json( {data:data} )
@@ -282,7 +282,7 @@ businessRouter.post('/addUser/',authMiddleWare,adminMiddleWare, async(req,res) =
 
     }catch(err){
 
-        return res.status(500).json({ error:err });
+        return res.status(500).json({ error: `Failed to add user: ${err}` });
 
     }   
 
