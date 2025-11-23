@@ -1,0 +1,39 @@
+[Unit]
+Description=TellMeWhen Backend API Service
+After=network.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ app_user }}
+Group={{ app_group }}
+WorkingDirectory={{ app_dir }}
+
+# Environment file
+EnvironmentFile={{ app_dir }}/.env
+
+# Run the Apptainer container
+ExecStart=/usr/bin/apptainer run \
+    --bind {{ data_dir }}:/data \
+    {{ container_dir }}/{{ container_name }}
+
+# Restart configuration
+Restart={{ service_restart_policy }}
+RestartSec={{ service_restart_sec }}
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier={{ service_name }}
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ data_dir }} {{ log_dir }}
+
+[Install]
+WantedBy=multi-user.target

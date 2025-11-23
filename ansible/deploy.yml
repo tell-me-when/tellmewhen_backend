@@ -1,0 +1,181 @@
+---
+- name: Deploy TellMeWhen Backend with Apptainer
+  hosts: production
+  become: yes
+  
+  vars_files:
+    - group_vars/all.yml
+  
+  tasks:
+    # ============================================
+    # 1. SYSTEM PREPARATION
+    # ============================================
+    
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+    
+    - name: Install required packages
+      apt:
+        name:
+          - apptainer
+          - python3
+          - python3-pip
+          - mysql-client
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    # ============================================
+    # 2. USER AND DIRECTORY SETUP
+    # ============================================
+    
+    - name: Create application user
+      user:
+        name: "{{ app_user }}"
+        system: yes
+        shell: /bin/bash
+        home: "{{ app_dir }}"
+        create_home: no
+    
+    - name: Create application directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0755'
+      loop:
+        - "{{ app_dir }}"
+        - "{{ container_dir }}"
+        - "{{ data_dir }}"
+        - "{{ log_dir }}"
+    
+    # ============================================
+    # 3. CONTAINER DEPLOYMENT
+    # ============================================
+    
+    - name: Check if container exists
+      stat:
+        path: "{{ container_dir }}/{{ container_name }}"
+      register: existing_container
+    
+    - name: Backup existing container
+      command: >
+        mv {{ container_dir }}/{{ container_name }} 
+        {{ container_dir }}/{{ container_name }}.backup.{{ ansible_date_time.epoch }}
+      when: existing_container.stat.exists
+    
+    - name: Copy Apptainer container to server
+      copy:
+        src: "{{ container_source }}"
+        dest: "{{ container_dir }}/{{ container_name }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0755'
+      notify: restart tellmewhen
+    
+    - name: Test container health
+      command: >
+        apptainer exec {{ container_dir }}/{{ container_name }} 
+        node --version
+      register: container_test
+      changed_when: false
+      failed_when: container_test.rc != 0
+    
+    - name: Display container test result
+      debug:
+        msg: "Container health check passed: {{ container_test.stdout }}"
+    
+    # ============================================
+    # 4. CONFIGURATION
+    # ============================================
+    
+    - name: Deploy environment configuration
+      template:
+        src: templates/.env.j2
+        dest: "{{ app_dir }}/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: '0600'
+      notify: restart tellmewhen
+    
+    - name: Deploy systemd service file
+      template:
+        src: templates/tellmewhen.service.j2
+        dest: /etc/systemd/system/{{ service_name }}.service
+        mode: '0644'
+      notify:
+        - reload systemd
+        - restart tellmewhen
+    
+    # ============================================
+    # 5. SERVICE MANAGEMENT
+    # ============================================
+    
+    - name: Enable and start service
+      systemd:
+        name: "{{ service_name }}"
+        enabled: yes
+        state: started
+        daemon_reload: yes
+    
+    - name: Wait for service to be ready
+      wait_for:
+        port: "{{ app_port }}"
+        host: "{{ ansible_host }}"
+        timeout: 60
+        delay: 5
+    
+    - name: Check service status
+      command: systemctl status {{ service_name }}
+      register: service_status
+      changed_when: false
+      failed_when: false
+    
+    - name: Display service status
+      debug:
+        msg: "{{ service_status.stdout_lines }}"
+    
+    # ============================================
+    # 6. HEALTH CHECK
+    # ============================================
+    
+    - name: Perform application health check
+      uri:
+        url: "http://{{ ansible_host }}:{{ app_port }}/health"
+        method: GET
+        timeout: 10
+      register: health_check
+      ignore_errors: yes
+    
+    - name: Display health check result
+      debug:
+        msg: "Health check: {{ health_check.status | default('FAILED') }}"
+    
+    # ============================================
+    # 7. CLEANUP
+    # ============================================
+    
+    - name: Remove old container backups (keep last 3)
+      shell: >
+        ls -t {{ container_dir }}/{{ container_name }}.backup.* 2>/dev/null | 
+        tail -n +4 | 
+        xargs rm -f
+      changed_when: false
+      failed_when: false
+
+  # ============================================
+  # HANDLERS
+  # ============================================
+  
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+    
+    - name: restart tellmewhen
+      systemd:
+        name: "{{ service_name }}"
+        state: restarted

@@ -1,0 +1,32 @@
+---
+# Application settings
+app_name: tellmewhen
+app_user: tellmewhen
+app_group: tellmewhen
+app_port: 3000
+
+# Directory structure
+app_dir: /opt/tellmewhen
+container_dir: "{{ app_dir }}/containers"
+data_dir: "{{ app_dir }}/data"
+log_dir: /var/log/tellmewhen
+
+# Container settings
+container_name: tellmewhen.sif
+container_source: ../apptainer/tellmewhen.sif
+
+# Database settings (use Ansible Vault for production)
+database_host: localhost
+database_user: tellmewhen_user
+database_password: "{{ vault_database_password | default('CHANGE_ME') }}"
+database_name: tellmewhen_db
+
+# API Keys (use Ansible Vault for production)
+jwt_secret: "{{ vault_jwt_secret | default('CHANGE_ME') }}"
+stream_api_key: "{{ vault_stream_api_key | default('CHANGE_ME') }}"
+stream_api_secret: "{{ vault_stream_api_secret | default('CHANGE_ME') }}"
+
+# Service settings
+service_name: "{{ app_name }}"
+service_restart_policy: on-failure
+service_restart_sec: 10

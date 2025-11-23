@@ -1,0 +1,61 @@
+Bootstrap: docker
+From: node:18-alpine
+
+%files
+    package.json /app/
+    package-lock.json /app/
+    src/ /app/src/
+
+%post
+    # Update and install dependencies
+    apk update
+    apk add --no-cache bash curl
+    
+    # Set working directory and install Node packages
+    cd /app
+    npm ci --only=production
+    
+    # Create non-root user for security
+    adduser -D -u 1000 appuser
+    chown -R appuser:appuser /app
+    
+    # Cleanup
+    npm cache clean --force
+    rm -rf /tmp/* /var/cache/apk/*
+
+%environment
+    export NODE_ENV=production
+    export PORT=3000
+    export PATH=/app/node_modules/.bin:$PATH
+
+%runscript
+    cd /app
+    exec node src/server.js
+
+%startscript
+    cd /app
+    exec node src/server.js
+
+%labels
+    Author Hufsa Haq
+    Version v1.0.0
+    Description TellMeWhen Backend API
+    Project https://github.com/HufsaHaq/tellmewhen
+
+%help
+    TellMeWhen Backend API Server
+    
+    This container runs the Express.js backend for TellMeWhen.
+    It requires environment variables for database connection and API keys.
+    
+    Usage:
+        apptainer run --bind /data:/data tellmewhen.sif
+    
+    Environment variables:
+        - DATABASE_HOST: MySQL database host
+        - DATABASE_USER: Database username
+        - DATABASE_PASSWORD: Database password
+        - DATABASE_NAME: Database name
+        - JWT_SECRET: Secret for JWT tokens
+        - STREAM_API_KEY: Stream Chat API key
+        - STREAM_API_SECRET: Stream Chat API secret

@@ -1,5 +1,6 @@
 node_modules/
 .env
+.env.j2
 .next
 *.pem
 to-do.txt
