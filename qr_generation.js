@@ -3,18 +3,22 @@ import crypto from 'crypto';
 import { Buffer } from 'buffer';
 
 const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'base64'); // Decode Base64 key
-const ENCRYPTION_IV = Buffer.from(process.env.ENCRYPTION_IV, 'base64'); // Decode Base64 IV
 const QR_BASE = process.env.QR_BASE || "https://tellmewhen.co.uk/customer_view/";
 
-const ALGO = 'aes-128-cbc';
+const ALGO = 'aes-256-gcm';
+const IV_LENGTH = 12;   // bytes — recommended nonce size for GCM
+const TAG_LENGTH = 16;  // bytes — GCM authentication tag
 
 // Validate environment variables
-if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 16 || !ENCRYPTION_IV || ENCRYPTION_IV.length !== 16) {
-    throw new Error('Invalid or missing ENCRYPTION_KEY or ENCRYPTION_IV in .env file. Ensure it is a 16-byte (Base64-encoded) key/iv. To generate, run: openssl rand -base64 16');
+if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
+    throw new Error('Invalid or missing ENCRYPTION_KEY in .env file. Ensure it is a 32-byte (Base64-encoded) key. To generate, run: openssl rand -base64 32');
 }
 
 /**
- * Encrypt Job ID using AES-128, ENCRYPTION_KEY, and ENCRYPTION_IV.
+ * Encrypt Job ID using AES-256-GCM with a fresh random IV per call.
+ * Output is ivHex + authTagHex + ciphertextHex, all concatenated — GCM's
+ * tag also means a tampered or truncated value fails to decrypt instead of
+ * silently producing garbage.
  * @param {string} jobId - The job ID to encrypt.
  * @returns {string} - URL-safe encrypted job ID.
  */
@@ -23,10 +27,11 @@ export function encryptJobId(jobId) {
         throw new Error('Invalid jobId: must be a non-empty string');
     }
     try {
-        const cipher = crypto.createCipheriv(ALGO, ENCRYPTION_KEY, ENCRYPTION_IV);
-        let encrypted = cipher.update(jobId, 'utf8', 'hex');
-        encrypted += cipher.final('hex');
-        return encrypted; 
+        const iv = crypto.randomBytes(IV_LENGTH);
+        const cipher = crypto.createCipheriv(ALGO, ENCRYPTION_KEY, iv);
+        const ciphertext = Buffer.concat([cipher.update(jobId, 'utf8'), cipher.final()]);
+        const authTag = cipher.getAuthTag();
+        return Buffer.concat([iv, authTag, ciphertext]).toString('hex');
     } catch (err) {
         console.error('Error encrypting job ID:', err);
         throw err;
@@ -67,8 +72,8 @@ export async function generate_qr(job_id) {
 }
 
 /**
- * Decrypt Job ID using AES-128, ENCRYPTION_KEY, and ENCRYPTION_IV.
- * @param {string} encryptedJobId - The encrypted job ID.
+ * Decrypt Job ID using AES-256-GCM.
+ * @param {string} encryptedJobId - The encrypted job ID (iv + authTag + ciphertext, hex).
  * @returns {string} - The decrypted job ID.
  */
 export function decryptJobId(encryptedJobId) {
@@ -76,10 +81,15 @@ export function decryptJobId(encryptedJobId) {
         throw new Error('Invalid encryptedJobId: must be a non-empty string');
     }
     try {
-        const decipher = crypto.createDecipheriv(ALGO, ENCRYPTION_KEY, ENCRYPTION_IV);
-        let decrypted = decipher.update(encryptedJobId, 'hex', 'utf8');
-        decrypted += decipher.final('utf8');
-        return decrypted;
+        const raw = Buffer.from(encryptedJobId, 'hex');
+        const iv = raw.subarray(0, IV_LENGTH);
+        const authTag = raw.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
+        const ciphertext = raw.subarray(IV_LENGTH + TAG_LENGTH);
+
+        const decipher = crypto.createDecipheriv(ALGO, ENCRYPTION_KEY, iv);
+        decipher.setAuthTag(authTag);
+        const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+        return decrypted.toString('utf8');
     } catch (err) {
         console.error('Error decrypting job ID:', err);
         throw err;

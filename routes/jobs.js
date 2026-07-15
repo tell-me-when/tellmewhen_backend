@@ -1,17 +1,17 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import webPush from 'web-push'
-import fs from 'fs'
 // db helper functions
-import { getJobHistory, getOpenJobs, createNewJob, assignJobToUser, completeJob, getJobDetails, getSubscription } from '../dbhelper.js';
-import { countOpenJobs, getBusinessPhoto, addUser, login,registerBusinessAndAdmin, countTotalJobs} from '../managementdbfunc.js';
+import { getJobHistory, getOpenJobs, createNewJob, assignJobToUser, completeJob, getJobDetails, countOpenJobs, countTotalJobs } from '../repositories/jobRepo.js';
+import { getSubscription } from '../repositories/subscriptionRepo.js';
+import { findWorkerInBusiness } from '../repositories/workerRepo.js';
 //middleware functions for encyrption, authentication and data integrity
 import {authMiddleWare, adminMiddleWare, moderatorMiddleWare} from '../authMiddleWare.js';
-import { generate_qr, decryptJobId } from "../qr_generation.js";
-
-
-//provide path to .env file
-dotenv.config('../')
+import { decodeJobIdParam, decodeJobIdBody } from '../middleware/jobId.js';
+import { validateBody } from '../middleware/validate.js';
+import { assignJobSchema, newJobSchema, completeJobSchema, notifyJobSchema } from '../schemas/jobs.js';
+import { ROLES } from '../constants/roles.js';
+import { generate_qr } from "../qr_generation.js";
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const jobRouter = express.Router();
 
@@ -50,7 +50,7 @@ const jobRouter = express.Router();
  * - The job history is retrieved based on the user's associated `businessId`.
  */
 
-jobRouter.get('/history',authMiddleWare, async (req, res) => {
+jobRouter.get('/history',authMiddleWare, asyncHandler(async (req, res) => {
 
     const businessId = req.user.businessId;
     const userId = req.user.userId;
@@ -64,10 +64,11 @@ jobRouter.get('/history',authMiddleWare, async (req, res) => {
 
     }catch(err){
 
-      return res.status(500).json({ error: `Failed to retrieve job history: ${err}` });
+      console.error('Error fetching job history:', err);
+      return res.status(500).json({ error: 'Unable to fetch job history' });
 
     }
-});
+}));
 
 /**
  * @route GET /jobs/open_jobs/:bid
@@ -95,21 +96,22 @@ jobRouter.get('/history',authMiddleWare, async (req, res) => {
  * - The `businessId` is extracted from the authenticated user's JWT.
  * - The count of open jobs is retrieved using the `countOpenJobs` function.
  */
-jobRouter.get('/open_jobs/:bid', authMiddleWare, async(req,res) => {
-    
+jobRouter.get('/open_jobs/:bid', authMiddleWare, asyncHandler(async(req,res) => {
+
     const businessId = req.user.businessId
     let result;
     try{
 
-        result = await countOpenJobs(businessId) 
+        result = await countOpenJobs(businessId)
         return res.status(200).json({ data:result });
 
     } catch (err) {
 
-        return res.status(500).json({ error: `Failed to count open jobs: ${err}` });
+        console.error('Error counting open jobs:', err);
+        return res.status(500).json( { error: 'Unable to count open jobs' } );
 
     }
-})
+}))
 
 
 
@@ -139,7 +141,7 @@ jobRouter.get('/open_jobs/:bid', authMiddleWare, async(req,res) => {
  * - The `businessId` is extracted from the authenticated user's JWT.
  * - The total job count is retrieved using the `countTotalJobs` function.
  */
-jobRouter.get('/total_jobs/:bid', authMiddleWare, async(req,res) => {
+jobRouter.get('/total_jobs/:bid', authMiddleWare, asyncHandler(async(req,res) => {
 
     //extract business id
     const businessId = req.user.businessId;
@@ -149,13 +151,13 @@ jobRouter.get('/total_jobs/:bid', authMiddleWare, async(req,res) => {
       result = await countTotalJobs(businessId);
       return res.status(200).json({ data:result});
 
-
     }catch (err) {
 
-      return res.status(500).json({ error: `Failed to count total jobs: ${err}` });
+      console.error('Error counting total jobs:', err);
+      return res.status(500).json( { error: 'Unable to count total jobs' } );
 
     }
-});
+}));
 
 
 /**
@@ -189,26 +191,26 @@ jobRouter.get('/total_jobs/:bid', authMiddleWare, async(req,res) => {
  * - The `userId` is taken from the request parameters.
  * - Open job details are retrieved using the `getOpenJobs` function.
  */
-jobRouter.get('/current/:uid',authMiddleWare, async (req, res) => {
+jobRouter.get('/current/:uid',authMiddleWare, asyncHandler(async (req, res) => {
 
     const businessId = req.user.businessId;
     const userId = req.params.uid;
     console.log(userId)
-    
+
     let result;
     try{
 
-        result = await getOpenJobs(businessId,userId); // returns a JSON object
+        result = await getOpenJobs(businessId,userId);
 
         return res.status(200).json(result);
 
     }catch(err){
-      
-      return res.status(500).json({ error: `Failed to retrieve current jobs: ${err}` });
 
+      console.error('Error fetching current jobs:', err);
+      return res.status(500).json({ error: 'Unable to fetch current jobs' });
 
     }
-});
+}));
 
 
 
@@ -241,26 +243,36 @@ jobRouter.get('/current/:uid',authMiddleWare, async (req, res) => {
  * - Only users with **moderator** privileges can assign jobs.
  * - Uses `assignJobToUser` to store the assignment in the database.
  */
-jobRouter.post('/assign_job',authMiddleWare, moderatorMiddleWare, async (req,res) => {
-    const data = req.body; // get the request data
+jobRouter.post('/assign_job',authMiddleWare, moderatorMiddleWare, validateBody(assignJobSchema), decodeJobIdBody('jid'), asyncHandler(async (req,res) => {
+    const jobId = req.jobId;
+    const userId = req.body.uid;
+    const businessId = req.user.businessId;
 
-    const encryptedJobId = data.jid;
-    const jobId = encryptedJobId;
-    const userId = data.uid;
     try{
 
-        await assignJobToUser(userId,jobId);
+        // the target worker must belong to the same business as the caller
+        const targetWorker = await findWorkerInBusiness(userId, businessId);
+        if(targetWorker.length === 0){
+            return res.status(404).json({ message: 'No such worker in this business' });
+        }
+
+        // scoped to businessId — a job outside the caller's business affects 0 rows
+        const result = await assignJobToUser(userId,jobId,businessId);
+        if(result.affectedRows === 0){
+            return res.status(404).json({ message: 'No such job in this business' });
+        }
 
         return res.status(201).json({message : `Job ${jobId} assigned to worker with id: ${userId}`});
 
     }catch (err) {
 
-        return res.status(500).json({ error: `Failed to assign job: ${err}` });
+        console.error('Error assigning job:', err);
+        return res.status(500).json({ error: 'Unable to assign job' });
 
     }
-    
 
-});
+
+}));
 
 
 
@@ -276,7 +288,7 @@ jobRouter.post('/assign_job',authMiddleWare, moderatorMiddleWare, async (req,res
  * @param {Object} req.body - The request payload containing job details.
  * @param {string} req.body.description - The description of the job.
  * @param {string} req.body.dueDate - The due date for job completion.
- * @param {string} req.body.userId - The ID of the user assigned to the job.
+ * @param {number} req.body.assignedId - The ID of the user assigned to the job.
  * @param {Object} res - Express response object.
  * 
  * @returns {JSON} 200 - OK. Job successfully created.
@@ -295,7 +307,7 @@ jobRouter.post('/assign_job',authMiddleWare, moderatorMiddleWare, async (req,res
  * - A unique job ID is generated and used to create a QR code.
  * - The QR code URL is returned in the response.
  */
-jobRouter.post('/new', authMiddleWare, async (req,res) => {
+jobRouter.post('/new', authMiddleWare, validateBody(newJobSchema), asyncHandler(async (req,res) => {
 
     const jobData = req.body;
     const description = jobData.description;
@@ -308,11 +320,18 @@ jobRouter.post('/new', authMiddleWare, async (req,res) => {
     //check if the user has the right permissions
     if(assignedId != userId){
 
-        if(req.user.role === 3){
+        if(req.user.role === ROLES.WORKER){
 
             return res.status(403).json({ message:"This action requires escalated permissions"})
 
         }
+
+        // the assignee must belong to the same business as the caller
+        const targetWorker = await findWorkerInBusiness(assignedId, businessId);
+        if(targetWorker.length === 0){
+            return res.status(404).json({ message: 'No such worker in this business' });
+        }
+
         //replace the userId from the middleware with the assinged userId
         userId = assignedId;
     }
@@ -331,9 +350,10 @@ jobRouter.post('/new', authMiddleWare, async (req,res) => {
 
     } catch (err) {
 
-      return res.status(500).json({ error: `Failed to create new job: ${err}` });
-    }
-})
+        console.error('Error creating job:', err);
+        return res.status(500).json({ error: 'Unable to create job' })
+}
+}))
 
 /**
  * @route POST /jobs/complete/:jid
@@ -344,51 +364,54 @@ jobRouter.post('/new', authMiddleWare, async (req,res) => {
  * @middleware authMiddleWare - Ensures the user is authenticated via JWT.
  * 
  * @param {Object} req - express request object
- * @param {Int} req.params.job_id - the encrypted unique jobId
+ * @param {String} req.params.jid - the encrypted unique jobId
  * @param {Object} req.body - the request payload
  * @param {String} req.user.userId - the user who has submitted the request, injected by middleware
- * @param {String} req.body.remarks - remarks relating to the job completion
- * 
+ * @param {String} [req.body.remarks] - remarks relating to the job completion
+ *
  * @param {Object} res - express respsonse object
  * @returns {JSON} 201 - Created if the job is marked as complete successfully
  * @returns {JSON} 401 - Unauthorized. If the user lacks authentication.
  * @returns {JSON} 403 - Forbidden. If a worker tries to mark another worker's job as complete
+ * @returns {JSON} 404 - Not found. If the job doesn't exist or isn't in the caller's business
  * @returns {JSON} 500 - Internal Server Error. If an error occurs while updating the DB record
  */
-jobRouter.post('/complete/:jid',authMiddleWare, async (req,res) =>{
-    const jobId = req.params.jid;
-    //extract JSON data from request 
-    const data = req.body;
+jobRouter.post('/complete/:jid',authMiddleWare, decodeJobIdParam('jid'), validateBody(completeJobSchema), asyncHandler(async (req,res) =>{
+    const jobId = req.jobId;
     const userId = req.user.userId;
-    const remarks = data.remarks;
+    const businessId = req.user.businessId;
+    const remarks = req.body.remarks;
 
-    // find worker who the job was assigned to
+    const jobDetails = await getJobDetails(jobId);
 
-    if(req.user.role === 3){
+    if(!jobDetails || jobDetails.Business_ID !== businessId){
 
-      const jobDetails = await getJobDetails(decryptJobId);
+      return res.status(404).json({ message: 'No such job in this business' })
 
-      if(jobDetails[0].User_ID != req.user.userId){
-
-        return res.status(403).json({ message: 'A worker cannot complete another workers job'})
-
-      }
     }
+
+    // a worker (lowest privilege) may only complete jobs assigned to them
+    if(req.user.role === ROLES.WORKER && jobDetails.User_ID != userId){
+
+      return res.status(403).json({ message: 'A worker cannot complete another workers job'})
+
+    }
+
     console.log(`JOB COMPLETE:\nUSER_ID:${userId}\nJob ID:${jobId}\nRemarks:${remarks}`)
     try{
 
-        await completeJob(userId,jobId,remarks)
+        await completeJob(userId,jobId,businessId,remarks)
 
         return res.status(201).json( { message: 'Job marked as complete'})
 
     }catch (err) {
-        console.log(err)
-        return res.status(500).json({ error: `Failed to complete job: ${err}` });
+        console.error('Error completing job:', err)
+        return res.status(500).json( { error: 'Unable to complete job' } )
 
     }
 
-    
-})
+
+}))
 
 //send customer a notification
 /**
@@ -408,11 +431,10 @@ jobRouter.post('/complete/:jid',authMiddleWare, async (req,res) =>{
  * @returns {JSON} 500 - Internal server error
  * 
  */
-jobRouter.post('/notify/:jid',authMiddleWare, async (req, res) => {
+jobRouter.post('/notify/:jid',authMiddleWare, decodeJobIdParam('jid'), validateBody(notifyJobSchema), asyncHandler(async (req, res) => {
     // Notify the customer and update the notification table
     const businessId = req.user.businessId;
-    const encryptedJobId = req.params.jid;
-    const jobId = encryptedJobId;
+    const jobId = req.jobId;
 
     const messageBody = req.body.message || 'Your job is ready for pickup';
     const messageTitle = req.body.title || 'There is an update to your job';
@@ -420,15 +442,17 @@ jobRouter.post('/notify/:jid',authMiddleWare, async (req, res) => {
     let pushSubscription;
     try{
 
-       pushSubscription = (await getSubscription(jobId,businessId))[0]
+       const subscriptions = await getSubscription(jobId,businessId);
+       pushSubscription = subscriptions[0];
        if( pushSubscription === undefined){
 
             return res.status(400).json({error:'Customer has not enabled notifications'})
        }
 
     } catch (err) {
-      return res.status(500).json({ error: `Failed to retrieve subscription: ${err}` });
-      
+      console.error('Error looking up push subscription:', err);
+      return res.status(500).json({ error: 'Unable to look up subscription' });
+
     }
   
     const payload = JSON.stringify({
@@ -453,15 +477,16 @@ jobRouter.post('/notify/:jid',authMiddleWare, async (req, res) => {
     //send notifcation using PUSH API
     try{
 
-      webPush.sendNotification(subscription, payload, options)
+      await webPush.sendNotification(subscription, payload, options)
 
       return res.status(200).json({ message:'Notification sent'})
 
     }catch(err){
-      return res.status(500).json({ error: `Failed to send notification: ${err}` });
+      console.error('Error sending push notification:', err);
+      return res.status(500).json({ error: 'Unable to send notification' })
     }
-   
-})
+
+}))
 
 /**
  * @route GET /jobs/display_code/:jid
@@ -472,7 +497,7 @@ jobRouter.post('/notify/:jid',authMiddleWare, async (req, res) => {
  * @middleware authMiddleWare - Ensures the user is authenticated via JWT.
  * 
  * @param {Object} req - express request object
- * @param {String} req.body.jobId - the job unique identifier
+ * @param {String} req.params.jid - the encrypted unique jobId
  * 
  * @param {Object} res - express response object
  * @returns {JSON} 201 - Created, qr code successfully regened
@@ -484,26 +509,27 @@ jobRouter.post('/notify/:jid',authMiddleWare, async (req, res) => {
  * @returns {JSON} 404 - Not found, a job does not exist in the DB
  * @returns {JSON} 500 - Internal server error, the server failed to create the qr code 
  */
-jobRouter.get('/display_code/:jid', authMiddleWare, async(req,res) =>{
+jobRouter.get('/display_code/:jid', authMiddleWare, decodeJobIdParam('jid'), asyncHandler(async(req,res) =>{
 
-    //check DB to see if jobId exists
+    //check DB to see if jobId exists and belongs to the caller's business
 
-    const jobId = req.params.jid;
+    const jobId = req.jobId;
 
     try{
 
         const result = await getJobDetails(jobId)
-        if(!result){
+        if(!result || result.Business_ID !== req.user.businessId){
 
             return res.status(404).json({ error:'No such job ID found in db'})
 
         }
     }catch(err){
 
-        return res.status(500).json({ error:`Error in looking up Job Id in DB: ${err}`})
+        console.error('Error looking up job in DB:', err);
+        return res.status(500).json({ error: 'Unable to look up job' })
     }
 
-    try{ 
+    try{
 
         const qrResult = await generate_qr(jobId)
         return res.status(201).json({
@@ -512,9 +538,10 @@ jobRouter.get('/display_code/:jid', authMiddleWare, async(req,res) =>{
 
     }catch (err){
 
-        return res.status(500).json({ error:`Error in generating qrCode ${err}`})
+        console.error('Error generating QR code:', err);
+        return res.status(500).json({ error: 'Unable to generate QR code' })
     }
 
-})
+}))
 
 export {jobRouter};

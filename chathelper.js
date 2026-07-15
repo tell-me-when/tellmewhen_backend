@@ -1,10 +1,6 @@
 import express from 'express';
 import { StreamChat } from "stream-chat";
-import dotenv from "dotenv";
-import { executeQuery } from './db_config.js';
-
-// loads env
-dotenv.config("./");
+import { isJobInHistory } from './repositories/jobRepo.js';
 
 // API endpoints for the chat functionality
 const chatRouter = express.Router();
@@ -76,13 +72,8 @@ const QuerybyUser = async (jobId) => {
 
 const deleteChannel= async (jobId) => {
   try {
-      const checkHistoryQuery = `
-          SELECT * FROM JOB_HISTORY WHERE Job_ID = ?;
-      `;
-      const historyResult = await executeQuery(checkHistoryQuery, [jobId]);
-
       // If the job is not in the history table, do nothing
-      if (historyResult.length === 0) {
+      if (!(await isJobInHistory(jobId))) {
           console.log(`Job ${jobId} is not in the history table. Channel not deleted.`);
           return;
       }

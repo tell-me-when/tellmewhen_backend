@@ -1,7 +1,11 @@
 import express from "express";
-import { deleteBusiness,deleteUser } from "../managementdbfunc.js";
+import { deleteBusiness } from "../repositories/businessRepo.js";
+import { deleteUser } from "../repositories/workerRepo.js";
 import {authMiddleWare, adminMiddleWare, moderatorMiddleWare} from '../authMiddleWare.js';
-import {removeSubscription} from "../dbhelper.js"
+import {removeSubscription} from "../repositories/subscriptionRepo.js"
+import { validateBody } from "../middleware/validate.js";
+import { deleteSubscriptionSchema } from "../schemas/delRoutes.js";
+import { asyncHandler } from "../middleware/asyncHandler.js";
 const deletionRouter = express.Router()
 
 // Delete a worker from a business
@@ -16,35 +20,42 @@ const deletionRouter = express.Router()
      * 
      * Request Parameters:
      * @param {string} req.params.uid - The user ID of the worker being deleted.
-     * @param {string} req.body.businessId - The business ID to which the user belongs.
-     * 
-     * Request Context:
-     * @param {Int} req.user.User_ID - the ID number of the user making the deletion.
-     * 
+     *
+     * Request Context (injected by middleware):
+     * @param {Int} req.user.userId - the ID of the admin making the deletion.
+     * @param {Int} req.user.businessId - the business the admin belongs to; the
+     *   target worker must belong to the same business or the deletion is rejected.
+     *
      * Responses
      * - 204 (No Content) if deletion is successful.
-     * - 409 (Conflict) if a user tries to delete themselves.
+     * - 409 (Conflict) if the target doesn't exist, belongs to another business,
+     *   is the caller's own account, or there's no admin left to reassign jobs to.
      * - 401 (Unauthorized) if a non-admin account tries to delete a user.
      */
-deletionRouter.post('/user/:uid',authMiddleWare, adminMiddleWare, async(req,res) =>{
-    
+deletionRouter.post('/user/:uid',authMiddleWare, adminMiddleWare, asyncHandler(async(req,res) =>{
+
     const userId = req.params.uid;
 
     const currentId = req.user.userId;
+    const businessId = req.user.businessId;
     try{
 
-        await deleteUser(userId,currentId);
+        await deleteUser(userId,currentId,businessId);
 
    }catch(err){
 
-        return res.status(409).json({ error: `Failed to delete user: ${err}` });
+        // deleteUser only throws deliberate, human-readable messages
+        // (self-delete, wrong business, no admin to reassign to) — safe
+        // to surface directly, unlike a raw DB error.
+        console.error('Error deleting user:', err);
+        return res.status(409).json({error: err.message});
 
    }
 
    return res.sendStatus(204);
-})
-//delete a business' whole account 
-deletionRouter.post("/:bid",authMiddleWare,adminMiddleWare, async(req,res) =>{
+}))
+//delete a business' whole account
+deletionRouter.post("/:bid",authMiddleWare,adminMiddleWare, asyncHandler(async(req,res) =>{
     /** POST /delete/:bid
     * This endpoint is used to delete a business from the database and service. There must
     * be sufficient validation done on the front end to make sure a business doesn't delete 
@@ -77,15 +88,16 @@ deletionRouter.post("/:bid",authMiddleWare,adminMiddleWare, async(req,res) =>{
     try{
 
         await deleteBusiness(businessId);
-        
+
         return res.sendStatus(204)
     }catch(err){
 
-        return res.status(500).json({ error: `Failed to delete business: ${err}` });
+        console.error('Error deleting business:', err);
+        return res.status(500).json({ error: 'Unable to delete business' });
 
     }
 
-})
+}))
 
 /**
  * @route /delete/subscription
@@ -99,21 +111,22 @@ deletionRouter.post("/:bid",authMiddleWare,adminMiddleWare, async(req,res) =>{
  * @return {JOSN} - 204(Created) if the record is succesfully deleted
  * 
  * */
-deletionRouter.post('/subscription', async(req,res) =>{
+deletionRouter.post('/subscription', validateBody(deleteSubscriptionSchema), asyncHandler(async(req,res) =>{
 
     const jobId = req.body.jobId;
 
     try{
 
         await removeSubscription(jobId);
-        res.sendStatus(204)
-        
+        return res.sendStatus(204)
+
     }catch(err){
 
-        res.status(500).json({error: `Error in deleting an old subscription: ${err}`})
+        console.error('Error deleting subscription:', err);
+        return res.status(500).json({error: 'Unable to delete subscription'})
     }
 
-})
+}))
 
 
 export { deletionRouter }

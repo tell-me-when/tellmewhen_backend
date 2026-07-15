@@ -1,29 +1,41 @@
 /*
 This file outlines the handling of authentication for JWT tokens.
-To-Do:
-Test authentication with JWT tokens
  */
-import jwt from 'jsonwebtoken';
+import { jwtVerify, importSPKI } from 'jose';
 import fs from 'fs';
-import dotenv from 'dotenv';
-dotenv.config();
+import { ROLES } from './constants/roles.js';
+import { checkToken } from './blacklist.js';
 
-const publicKey = process.env.jwt_pub; //fs.readFileSync('jwtRSA256_public.pem','utf-8');
+const publicKeyPem = fs.readFileSync('jwtRSA256-public.pem','utf-8');
+const publicKey = await importSPKI(publicKeyPem, 'RS256');
 
 const authMiddleWare = async(req, res, next) => {
     //check that authorisation token is present in cookies
     if(req.cookies?.access){
         const token = req.cookies.access
 
-        await jwt.verify(token,publicKey,{ algorithms: ['RS256'] },
-            (err,decoded) =>{ 
-            if(err){
-                return res.status(400).json({ message:`Unable to verify token: ${err}`})
-            }else{
-                req.user = decoded;
-                next();
-            }
-            })
+        let payload;
+        try{
+            const verified = await jwtVerify(token, publicKey, { algorithms: ['RS256'] });
+            payload = verified.payload;
+        }catch(err){
+            return res.status(400).json({ message:`Unable to verify token: ${err}`})
+        }
+
+        // A valid signature isn't enough on its own — the token also has to
+        // still be marked valid in TOKENS (logout / freezeUser revoke here).
+        let stillValid;
+        try{
+            stillValid = await checkToken(token);
+        }catch(err){
+            return res.status(500).json({ message: `Unable to verify token status: ${err}` });
+        }
+        if(!stillValid){
+            return res.status(401).json({ message: 'Token has been revoked, please sign in again' });
+        }
+
+        req.user = payload;
+        next();
     }else{
 
         return res.status(401).json( {message:'No token provided'});
@@ -31,30 +43,21 @@ const authMiddleWare = async(req, res, next) => {
     }
 }
 
-const adminMiddleWare = (req, res, next)=>{
-    //passed from previous middleware
-    const role = req.user.role; // role not privilige !
-    if(role != null){
-        if(role === 1){
-            next();
-        }else{
-
-            return res.status(401).json({ message: "Unauthorized: Invalid privilege level" });
-
-        }
-    }else{
-        
+// Lower role number = higher privilege. Returns middleware that only
+// admits users whose role is at least as privileged as maxLevel.
+const requireRole = (maxLevel) => (req, res, next) => {
+    const role = req.user?.role; // role not privilige !
+    if(role == null){
         return res.status(401).json({ message: "Unauthorized: No privilige level assigned"});
-
-        }
     }
-
-const moderatorMiddleWare = (req, res, next)=>{
-    const role= req.user.role;
-    if(role === 2 || role === 1){
+    if(role <= maxLevel){
         next();
     }else{
         return res.status(401).json({ message: "Unauthorized: Invalid privilege level" });
     }
 }
-export { authMiddleWare, moderatorMiddleWare, adminMiddleWare};
+
+const adminMiddleWare = requireRole(ROLES.ADMIN);
+const moderatorMiddleWare = requireRole(ROLES.MODERATOR);
+
+export { authMiddleWare, moderatorMiddleWare, adminMiddleWare, requireRole};
